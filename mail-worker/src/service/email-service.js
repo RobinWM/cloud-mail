@@ -252,6 +252,7 @@ const emailService = {
 		}
 
 		let messageId = null;
+		let sendMessage = null;
 
 		//存在站外时邮箱全部由resend发送
 		if (!allInternal) {
@@ -277,6 +278,7 @@ const emailService = {
 
 			const sendResult = await c.env.EMAIL.send(sendForm);
 			messageId = sendResult?.messageId || null;
+			sendMessage = this.toSendResultMessage(sendResult);
 
 		}
 
@@ -297,6 +299,7 @@ const emailService = {
 		emailData.type = emailConst.type.SEND;
 		emailData.userId = userId;
 		emailData.resendEmailId = messageId;
+		emailData.message = sendMessage;
 
 		const recipient = [];
 
@@ -534,6 +537,18 @@ const emailService = {
 		}
 
 		return cloudflareAttachments;
+	},
+
+	toSendResultMessage(sendResult) {
+		if (!sendResult) {
+			return null;
+		}
+
+		try {
+			return JSON.stringify(sendResult);
+		} catch (error) {
+			return String(sendResult);
+		}
 	},
 
 	selectById(c, emailId) {
