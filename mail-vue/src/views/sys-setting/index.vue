@@ -176,19 +176,6 @@
                              v-model="setting.noRecipient"/>
                 </div>
               </div>
-              <div class="setting-item">
-                <div><span>{{ $t('resendToken') }}</span></div>
-                <div>
-                  <el-button class="opt-button" style="margin-top: 0" @click="openResendList" size="small"
-                             type="primary">
-                    <Icon icon="ic:round-list" width="18" height="18"/>
-                  </el-button>
-                  <el-button class="opt-button" style="margin-top: 0" @click="openResendForm" size="small"
-                             type="primary">
-                    <Icon icon="material-symbols:add-rounded" width="16" height="16"/>
-                  </el-button>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -413,20 +400,6 @@
           <el-button type="primary" :loading="settingLoading" @click="saveTitle">{{ $t('save') }}</el-button>
         </form>
       </el-dialog>
-      <el-dialog v-model="resendTokenFormShow" :title="$t('resendToken')" width="340" @closed="cleanResendTokenForm">
-        <form>
-          <el-select style="margin-bottom: 15px" v-model="resendTokenForm.domain" placeholder="Select">
-            <el-option
-                v-for="item in settingStore.domainList"
-                :key="item"
-                :label="item"
-                :value="item"
-            />
-          </el-select>
-          <el-input type="text" :placeholder="$t('addResendTokenDesc')" v-model="resendTokenForm.token"/>
-          <el-button type="primary" :loading="settingLoading" @click="saveResendToken">{{ $t('save') }}</el-button>
-        </form>
-      </el-dialog>
       <el-dialog v-model="r2DomainShow" :title="$t('addOsDomain')" width="340"
                  @closed="r2DomainInput = setting.r2Domain">
         <form>
@@ -593,14 +566,6 @@
           </div>
         </template>
       </el-dialog>
-      <el-dialog class="resend-table" v-model="showResendList" :title="$t('resendTokenList')">
-        <el-table :data="resendList">
-          <el-table-column :min-width="emailColumnWidth" property="key" :label="$t('domain')"
-                           :show-overflow-tooltip="true"/>
-          <el-table-column :width="tokenColumnWidth" property="value" label="Token" fixed="right"
-                           :show-overflow-tooltip="true"/>
-        </el-table>
-      </el-dialog>
       <el-dialog v-model="regVerifyCountShow" :title="$t('rulesVerifyTitle',{count: regVerifyCount})"
                  @closed="regVerifyCount = setting.regVerifyCount">
         <form>
@@ -745,7 +710,6 @@ import {storeToRefs} from "pinia";
 import {debounce} from 'lodash-es'
 import {isEmail} from "@/utils/verify-utils.js";
 import loading from "@/components/loading/index.vue";
-import {getTextWidth} from "@/utils/text.js";
 import {fileToBase64} from "@/utils/file-utils.js"
 import {useI18n} from 'vue-i18n';
 import axios from "axios";
@@ -764,7 +728,6 @@ const localUpShow = ref(false)
 const accountStore = useAccountStore();
 const userStore = useUserStore();
 const editTitleShow = ref(false)
-const resendTokenFormShow = ref(false)
 const r2DomainShow = ref(false)
 const turnstileShow = ref(false)
 const tgSettingShow = ref(false)
@@ -772,7 +735,6 @@ const noticePopupShow = ref(false)
 const thirdEmailShow = ref(false)
 const forwardRulesShow = ref(false)
 const emailPrefixShow = ref(false)
-const showResendList = ref(false)
 const settingStore = useSettingStore();
 const uiStore = useUiStore();
 const {settings: setting} = storeToRefs(settingStore);
@@ -792,10 +754,6 @@ let backup = '{}'
 const addS3Show = ref(false)
 const addVerifyCountShow = ref(false)
 const regVerifyCountShow = ref(false)
-const resendTokenForm = reactive({
-  domain: '',
-  token: '',
-})
 const turnstileForm = reactive({
   siteKey: '',
   secretKey: ''
@@ -842,8 +800,6 @@ const tgBotStatus = ref(0)
 const tgBotToken = ref('')
 const forwardEmail = ref([])
 const forwardStatus = ref(0)
-const emailColumnWidth = ref(0)
-const tokenColumnWidth = ref(0)
 const ruleType = ref(0)
 const ruleEmail = ref([])
 const tgMsgFrom = ref('')
@@ -862,7 +818,6 @@ function getSettings() {
   settingQuery().then(settingData => {
     setting.value = settingData
     settingStore.domainList = settingData.domainList;
-    resendTokenForm.domain = setting.value.domainList[0]
     loginOpacity.value = setting.value.loginOpacity
     minEmailPrefix.value = setting.value.minEmailPrefix
     firstLoading.value = false
@@ -901,28 +856,6 @@ function resetAddS3Form() {
   s3.forcePathStyle = setting.value.forcePathStyle
 }
 
-const resendList = computed(() => {
-
-  let list = Object.keys(setting.value.resendTokens).map(key => {
-    return {
-      key: key,
-      value: setting.value.resendTokens[key]
-    };
-  })
-
-  if (list.length > 0) {
-
-    const key = list.reduce((a, b) => compareByLengthAndUpperCase(a, b, 'key')).key;
-    emailColumnWidth.value = getTextWidth(key) + 30;
-
-    const value = list.reduce((a, b) => compareByLengthAndUpperCase(a, b, 'value')).value;
-    tokenColumnWidth.value = getTextWidth(value) + 30;
-
-  }
-
-  return list;
-});
-
 function getUpdate() {
   if (getUpdateErrorCount > 5 || !getUpdateErrorCount) return
   axios.get('https://api.github.com/repos/maillab/cloud-mail/releases/latest').then(({data}) => {
@@ -951,15 +884,6 @@ function saveRegVerifyCount() {
   editSetting({regVerifyCount: regVerifyCount.value})
 }
 
-const compareByLengthAndUpperCase = (a, b, key) => {
-  const getUpperCaseCount = (str) => (str.match(/[A-Z]/g) || []).length;
-  if (a[key].length === b[key].length) {
-    return getUpperCaseCount(a[key]) > getUpperCaseCount(b[key]) ? a : b;
-  }
-  return a[key].length > b[key].length ? a : b;
-};
-
-
 function closedSetBackground() {
   backgroundImage.value = ''
   localUpShow.value = false
@@ -983,10 +907,6 @@ function openTgSetting() {
 
 function openNoticePopupSetting() {
   noticePopupShow.value = true
-}
-
-function openResendList() {
-  showResendList.value = true
 }
 
 function resetNoticeForm() {
@@ -1241,29 +1161,11 @@ function saveR2domain() {
   editSetting(settingForm)
 }
 
-function openResendForm() {
-  resendTokenFormShow.value = true
-}
-
-function saveResendToken() {
-  const settingForm = {
-    resendTokens: {}
-  }
-  const domain = resendTokenForm.domain.slice(1)
-  settingForm.resendTokens[domain] = resendTokenForm.token
-  editSetting(settingForm)
-}
-
 function backupSetting() {
   const settingForm = {...setting.value}
-  delete settingForm.resendTokens
   delete settingForm.siteKey
   delete settingForm.secretKey
   backup = JSON.stringify(setting.value)
-}
-
-function cleanResendTokenForm() {
-  resendTokenForm.token = ''
 }
 
 function beforeChange() {
@@ -1278,7 +1180,6 @@ function change(e) {
   delete settingForm.secretKey
   delete settingForm.s3AccessKey
   delete settingForm.s3SecretKey
-  delete settingForm.resendTokens
   editSetting(settingForm, false)
 }
 
@@ -1312,7 +1213,6 @@ function editSetting(settingForm, refreshStatus = true) {
     }
     editTitleShow.value = false
     r2DomainShow.value = false
-    resendTokenFormShow.value = false
     turnstileShow.value = false
     tgSettingShow.value = false
     thirdEmailShow.value = false
@@ -1538,16 +1438,6 @@ function editSetting(settingForm, refreshStatus = true) {
   }
 }
 
-:deep(.resend-table.el-dialog) {
-  min-height: 300px;
-  width: 500px !important;
-  @media (max-width: 540px) {
-    width: calc(100% - 40px) !important;
-    margin-right: 20px !important;
-    margin-left: 20px !important;
-  }
-}
-
 :deep(.notice-popup.el-dialog) {
   min-height: 300px;
   width: 820px !important;
@@ -1556,10 +1446,6 @@ function editSetting(settingForm, refreshStatus = true) {
     margin-right: 20px !important;
     margin-left: 20px !important;
   }
-}
-
-:deep(.resend-table .el-dialog__header) {
-  padding-bottom: 5px;
 }
 
 :deep(.el-table__inner-wrapper:before) {

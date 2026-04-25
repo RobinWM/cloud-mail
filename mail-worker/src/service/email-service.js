@@ -7,7 +7,6 @@ import settingService from './setting-service';
 import accountService from './account-service';
 import BizError from '../error/biz-error';
 import emailUtils from '../utils/email-utils';
-import { Resend } from 'resend';
 import attService from './att-service';
 import { parseHTML } from 'linkedom';
 import userService from './user-service';
@@ -163,7 +162,7 @@ const emailService = {
 			attachments //附件
 		} = params;
 
-		const { resendTokens, r2Domain, send, domainList } = await settingService.query(c);
+		const { r2Domain, send, domainList } = await settingService.query(c);
 
 		let { imageDataList, html } = await attService.toImageUrlHtml(c, content);
 
@@ -228,12 +227,8 @@ const emailService = {
 
 		}
 
-		const domain = emailUtils.getDomain(accountRow.email);
-		const resendToken = resendTokens[domain];
-
-		//如果接收方存在站外邮箱，又没有resend token
-		if (!resendToken && !allInternal) {
-			throw new BizError(t('noResendToken'));
+		if (!allInternal && !c.env.EMAIL?.send) {
+			throw new BizError(t('noEmailBinding'));
 		}
 
 		//没有发件人名字自动截取
@@ -256,20 +251,21 @@ const emailService = {
 
 		}
 
-		let resendResult = {};
+		let messageId = null;
 
 		//存在站外时邮箱全部由resend发送
 		if (!allInternal) {
 
-			const resend = new Resend(resendToken);
-
 			const sendForm = {
-				from: `${name} <${accountRow.email}>`,
+				from: {
+					email: accountRow.email,
+					name
+				},
 				to: [...receiveEmail],
-				subject: subject,
-				text: text,
-				html: html,
-				attachments: [...imageDataList, ...attachments]
+				subject,
+				text,
+				html,
+				attachments: await this.toCloudflareAttachments(c, imageDataList, attachments)
 			};
 
 			if (sendType === 'reply') {
@@ -279,15 +275,9 @@ const emailService = {
 				};
 			}
 
-			resendResult = await resend.emails.send(sendForm);
+			const sendResult = await c.env.EMAIL.send(sendForm);
+			messageId = sendResult?.messageId || null;
 
-		}
-
-		const { data, error } = resendResult;
-
-
-		if (error) {
-			throw new BizError(error.message);
 		}
 
 		imageDataList = imageDataList.map(item => ({...item, contentId: `<${item.contentId}>`}))
@@ -306,7 +296,7 @@ const emailService = {
 		emailData.status = emailConst.status.SENT;
 		emailData.type = emailConst.type.SEND;
 		emailData.userId = userId;
-		emailData.resendEmailId = data?.id;
+		emailData.resendEmailId = messageId;
 
 		const recipient = [];
 
@@ -518,6 +508,32 @@ const emailService = {
 		})
 
 		return document.toString();
+	},
+
+	async toCloudflareAttachments(c, imageDataList = [], attachments = []) {
+		const cloudflareAttachments = [];
+
+		for (const attachment of [...imageDataList, ...(attachments || [])]) {
+			let content = attachment.content || attachment.buff;
+
+			if (!content && attachment.path) {
+				const response = await fetch(attachment.path);
+				if (!response.ok) {
+					throw new BizError(`Failed to load inline attachment: ${attachment.filename || attachment.path}`);
+				}
+				content = await response.arrayBuffer();
+			}
+
+			cloudflareAttachments.push({
+				content,
+				filename: attachment.filename,
+				type: attachment.type || attachment.mimeType || attachment.contentType || 'application/octet-stream',
+				disposition: attachment.contentId ? 'inline' : 'attachment',
+				contentId: attachment.contentId || undefined
+			});
+		}
+
+		return cloudflareAttachments;
 	},
 
 	selectById(c, emailId) {
