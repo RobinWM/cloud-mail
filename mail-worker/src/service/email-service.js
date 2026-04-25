@@ -253,6 +253,7 @@ const emailService = {
 
 		let messageId = null;
 		let sendMessage = null;
+		let sendStatus = emailConst.status.SENT;
 
 		//存在站外时邮箱全部由resend发送
 		if (!allInternal) {
@@ -279,6 +280,7 @@ const emailService = {
 			const sendResult = await c.env.EMAIL.send(sendForm);
 			messageId = sendResult?.messageId || null;
 			sendMessage = this.toSendResultMessage(sendResult);
+			sendStatus = this.toSendResultStatus(sendResult, messageId);
 
 		}
 
@@ -295,7 +297,7 @@ const emailService = {
 		emailData.content = html;
 		emailData.text = text;
 		emailData.accountId = accountId;
-		emailData.status = emailConst.status.SENT;
+		emailData.status = sendStatus;
 		emailData.type = emailConst.type.SEND;
 		emailData.userId = userId;
 		emailData.resendEmailId = messageId;
@@ -549,6 +551,32 @@ const emailService = {
 		} catch (error) {
 			return String(sendResult);
 		}
+	},
+
+	toSendResultStatus(sendResult, messageId) {
+		const result = sendResult?.result || sendResult || {};
+
+		const delivered = Array.isArray(result.delivered) ? result.delivered : [];
+		const queued = Array.isArray(result.queued) ? result.queued : [];
+		const permanentBounces = Array.isArray(result.permanent_bounces) ? result.permanent_bounces : [];
+
+		if (permanentBounces.length > 0 && delivered.length === 0 && queued.length === 0) {
+			return emailConst.status.BOUNCED;
+		}
+
+		if (queued.length > 0 && delivered.length === 0) {
+			return emailConst.status.DELAYED;
+		}
+
+		if (delivered.length > 0) {
+			return emailConst.status.DELIVERED;
+		}
+
+		if (messageId) {
+			return emailConst.status.DELIVERED;
+		}
+
+		return emailConst.status.SENT;
 	},
 
 	selectById(c, emailId) {
